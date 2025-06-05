@@ -30,14 +30,14 @@ size_t libspdm_get_max_buffer_size(void)
 void libspdm_test_transport_storage_encode_message(void **state)
 {
     libspdm_test_context_t *spdm_test_context = *state;
-    storage_spdm_transport_header *hdr;
+    spdm_storage_transport_virtual_header_t *hdr;
     void *transport_message, *message;
     size_t transport_message_size, message_size;
     bool is_app_message, is_request_message;
     libspdm_return_t ret;
 
     if (m_libspdm_transport_storage_test_context.test_buffer_size <
-        sizeof(storage_spdm_transport_header)) {
+        sizeof(spdm_storage_transport_virtual_header_t)) {
         LIBSPDM_ASSERT(false);
     }
 
@@ -47,7 +47,7 @@ void libspdm_test_transport_storage_encode_message(void **state)
     is_app_message = false;
     is_request_message = true;
     message_size = 12;
-    message = (uint8_t *)transport_message + sizeof(storage_spdm_transport_header);
+    message = (uint8_t *)transport_message + sizeof(spdm_storage_transport_virtual_header_t);
 
     ret = libspdm_transport_storage_encode_message(state,
                                                    NULL,
@@ -64,7 +64,6 @@ void libspdm_test_transport_storage_encode_message(void **state)
     LIBSPDM_ASSERT(hdr->security_protocol == SPDM_STORAGE_SECURITY_PROTOCOL_DMTF);
     LIBSPDM_ASSERT((hdr->security_protocol_specific >> 8) == 0); /* SPSP1 */
     LIBSPDM_ASSERT((hdr->security_protocol_specific & 0xFF) != 0); /* SPSP0 */
-    LIBSPDM_ASSERT(hdr->length == (message_size + sizeof(storage_spdm_transport_header)));
 
     /* Invalid Parameters: Message side exceeds transport buffer size */
     transport_message_size = 0;
@@ -84,7 +83,7 @@ void libspdm_test_transport_storage_encode_message(void **state)
 void libspdm_test_transport_storage_encode_management_cmd(void **state)
 {
     libspdm_test_context_t *spdm_test_context = *state;
-    storage_spdm_transport_header *hdr;
+    spdm_storage_transport_virtual_header_t *hdr;
     size_t transport_message_size;
     void *transport_message;
     size_t allocation_len = 0;
@@ -93,7 +92,7 @@ void libspdm_test_transport_storage_encode_management_cmd(void **state)
     libspdm_return_t ret;
 
     if (m_libspdm_transport_storage_test_context.test_buffer_size <
-        sizeof(storage_spdm_transport_header)) {
+        sizeof(spdm_storage_transport_virtual_header_t)) {
         LIBSPDM_ASSERT(false);
     }
 
@@ -118,8 +117,6 @@ void libspdm_test_transport_storage_encode_management_cmd(void **state)
     LIBSPDM_ASSERT(hdr->security_protocol == SPDM_STORAGE_SECURITY_PROTOCOL_DMTF);
     LIBSPDM_ASSERT((hdr->security_protocol_specific >> 8) == 0); /* SPSP1 */
     LIBSPDM_ASSERT((hdr->security_protocol_specific & 0xFF) != 0); /* SPSP0 */
-    LIBSPDM_ASSERT(hdr->inc_512 == false);
-    LIBSPDM_ASSERT(hdr->length == sizeof(storage_spdm_transport_header));
 
     /* Valid Parameters: Test IF_SEND Pending Info */
     transport_message_size = LIBSPDM_MAX_SENDER_RECEIVER_BUFFER_SIZE;
@@ -142,8 +139,6 @@ void libspdm_test_transport_storage_encode_management_cmd(void **state)
     LIBSPDM_ASSERT(hdr->security_protocol == SPDM_STORAGE_SECURITY_PROTOCOL_DMTF);
     LIBSPDM_ASSERT((hdr->security_protocol_specific >> 8) == 0); /* SPSP1 */
     LIBSPDM_ASSERT((hdr->security_protocol_specific & 0xFF) != 0); /* SPSP0 */
-    LIBSPDM_ASSERT(hdr->inc_512 == false);
-    LIBSPDM_ASSERT(hdr->length == sizeof(storage_spdm_transport_header));
 
     /* Bad Transport Message Size */
     transport_message_size = 0;
@@ -209,8 +204,8 @@ void libspdm_test_transport_storage_encode_discovery_response(void **state)
 
     d_resp = transport_message;
     LIBSPDM_ASSERT(transport_message_size == sizeof(spdm_storage_discovery_response_t));
-    LIBSPDM_ASSERT(d_resp->data_length == sizeof(spdm_storage_discovery_response_t));
-    LIBSPDM_ASSERT(d_resp->storage_binding_version == SPDM_STORAGE_SECURITY_BINDING_VERSION);
+    LIBSPDM_ASSERT(d_resp->storage_response_headers.data_length == sizeof(spdm_storage_discovery_response_t));
+    LIBSPDM_ASSERT(d_resp->storage_response_headers.storage_binding_version == SPDM_STORAGE_SECURITY_BINDING_VERSION);
     LIBSPDM_ASSERT(d_resp->supported_operations != 0);
 
     /* Invalid Input Buffer Size */
@@ -254,8 +249,8 @@ void libspdm_test_transport_storage_encode_pending_resp(void **state)
 
     p_resp = transport_message;
     LIBSPDM_ASSERT(transport_message_size == sizeof(spdm_storage_pending_info_response_t));
-    LIBSPDM_ASSERT(p_resp->data_length == sizeof(spdm_storage_pending_info_response_t));
-    LIBSPDM_ASSERT(p_resp->storage_binding_version == SPDM_STORAGE_SECURITY_BINDING_VERSION);
+    LIBSPDM_ASSERT(p_resp->storage_response_headers.data_length == sizeof(spdm_storage_pending_info_response_t));
+    LIBSPDM_ASSERT(p_resp->storage_response_headers.storage_binding_version == SPDM_STORAGE_SECURITY_BINDING_VERSION);
     LIBSPDM_ASSERT(p_resp->pending_info_flag == 1);
     LIBSPDM_ASSERT(p_resp->response_length == pending_response_length);
 
@@ -271,8 +266,8 @@ void libspdm_test_transport_storage_encode_pending_resp(void **state)
 
     p_resp = transport_message;
     LIBSPDM_ASSERT(transport_message_size == sizeof(spdm_storage_pending_info_response_t));
-    LIBSPDM_ASSERT(p_resp->data_length == sizeof(spdm_storage_pending_info_response_t));
-    LIBSPDM_ASSERT(p_resp->storage_binding_version == SPDM_STORAGE_SECURITY_BINDING_VERSION);
+    LIBSPDM_ASSERT(p_resp->storage_response_headers.data_length == sizeof(spdm_storage_pending_info_response_t));
+    LIBSPDM_ASSERT(p_resp->storage_response_headers.storage_binding_version == SPDM_STORAGE_SECURITY_BINDING_VERSION);
     LIBSPDM_ASSERT(p_resp->pending_info_flag == 0);
     LIBSPDM_ASSERT(p_resp->response_length == 0);
 

@@ -16,7 +16,11 @@
 typedef struct {
     uint16_t data_length;
     uint16_t storage_binding_version;
-    uint8_t connection_parameters;
+} spdm_storage_response_header_t;
+
+typedef struct {
+    spdm_storage_response_header_t storage_response_headers;
+    uint8_t conn_params;
     uint8_t reserved1[3];
     uint8_t supported_operations;
     uint8_t reserved2[7];
@@ -24,12 +28,12 @@ typedef struct {
 } spdm_storage_discovery_response_t;
 
 typedef struct {
-    uint16_t data_length;
-    uint16_t storage_binding_version;
+    spdm_storage_response_header_t storage_response_headers;
     uint32_t pending_info_flag;
     uint32_t response_length;
 } spdm_storage_pending_info_response_t;
 
+#define LIBSPDM_STORAGE_SEQUENCE_NUMBER_COUNT 2
 #define SPDM_STORAGE_SECURITY_BINDING_VERSION 0x1000
 #define SPDM_STORAGE_SECURITY_PROTOCOL_DMTF 0xE8
 

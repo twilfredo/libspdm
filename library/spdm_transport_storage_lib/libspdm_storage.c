@@ -82,13 +82,12 @@ libspdm_return_t libspdm_storage_decode_message(uint32_t **session_id,
                                                 size_t *message_size,
                                                 void **message)
 {
-    const storage_spdm_transport_header *storage_header;
-    uint32_t storage_length;
+    const spdm_storage_transport_virtual_header_t *storage_header;
     uint16_t security_protocol_specific;
     uint8_t spsp0, spsp1, spdm_operation;
 
-    LIBSPDM_ASSERT(transport_message_size >= sizeof(storage_spdm_transport_header));
-    if (transport_message_size <= sizeof(storage_spdm_transport_header)) {
+    LIBSPDM_ASSERT(transport_message_size >= sizeof(spdm_storage_transport_virtual_header_t));
+    if (transport_message_size <= sizeof(spdm_storage_transport_virtual_header_t)) {
         return LIBSPDM_STATUS_INVALID_MSG_SIZE;
     }
 
@@ -132,27 +131,18 @@ libspdm_return_t libspdm_storage_decode_message(uint32_t **session_id,
             return LIBSPDM_STATUS_INVALID_MSG_FIELD;
         }
         if (transport_message_size <=
-            sizeof(storage_spdm_transport_header) + sizeof(uint32_t)) {
+            sizeof(spdm_storage_transport_virtual_header_t) + sizeof(uint32_t)) {
             return LIBSPDM_STATUS_INVALID_MSG_SIZE;
         }
         *session_id = (void *)((uint8_t *)transport_message +
-                               sizeof(storage_spdm_transport_header));
+                               sizeof(spdm_storage_transport_virtual_header_t));
         break;
     default:
         return LIBSPDM_STATUS_UNSUPPORTED_CAP;
     }
 
-#if __BYTE_ORDER__==__ORDER_BIG_ENDIAN__
-    storage_length  = libspdm_byte_swap_32(storage_header->length);
-#else
-    storage_length  = storage_header->length;
-#endif
-    if (storage_length != transport_message_size) {
-        return LIBSPDM_STATUS_INVALID_MSG_SIZE;
-    }
-
-    *message_size = transport_message_size - sizeof(storage_spdm_transport_header);
-    *message = (uint8_t *)transport_message + sizeof(storage_spdm_transport_header);
+    *message_size = transport_message_size - sizeof(spdm_storage_transport_virtual_header_t);
+    *message = (uint8_t *)transport_message + sizeof(spdm_storage_transport_virtual_header_t);
 
     return LIBSPDM_STATUS_SUCCESS;
 }
@@ -360,17 +350,17 @@ libspdm_return_t libspdm_storage_encode_message(const uint32_t *session_id,
                                                 void **transport_message)
 {
     uint32_t data32;
-    storage_spdm_transport_header *storage_header;
+    spdm_storage_transport_virtual_header_t *storage_header;
 
     if (!transport_message_size || *transport_message_size == 0
         || message_size == 0) {
         return LIBSPDM_STATUS_INVALID_MSG_SIZE;
     }
 
-    LIBSPDM_ASSERT(*transport_message_size >= sizeof(storage_spdm_transport_header));
+    LIBSPDM_ASSERT(*transport_message_size >= sizeof(spdm_storage_transport_virtual_header_t));
 
-    if (*transport_message_size < message_size + sizeof(storage_spdm_transport_header)) {
-        *transport_message_size = message_size + sizeof(storage_spdm_transport_header);
+    if (*transport_message_size < message_size + sizeof(spdm_storage_transport_virtual_header_t)) {
+        *transport_message_size = message_size + sizeof(spdm_storage_transport_virtual_header_t);
         return LIBSPDM_STATUS_BUFFER_TOO_SMALL;
     }
 
@@ -382,10 +372,9 @@ libspdm_return_t libspdm_storage_encode_message(const uint32_t *session_id,
         return LIBSPDM_STATUS_INVALID_MSG_FIELD;
     }
 
-    *transport_message_size = message_size + sizeof(storage_spdm_transport_header);
-    *transport_message = (uint8_t *)message - sizeof(storage_spdm_transport_header);
+    *transport_message_size = message_size + sizeof(spdm_storage_transport_virtual_header_t);
+    *transport_message = (uint8_t *)message - sizeof(spdm_storage_transport_virtual_header_t);
     storage_header = *transport_message;
-    storage_header->inc_512 = false;
 
     storage_header->security_protocol = SPDM_STORAGE_SECURITY_PROTOCOL_DMTF;
 
@@ -405,10 +394,7 @@ libspdm_return_t libspdm_storage_encode_message(const uint32_t *session_id,
                                                       SPDM_STORAGE_MAX_CONNECTION_ID_MASK;
     }
 
-    storage_header->length = (uint32_t)*transport_message_size;
-
 #if __BYTE_ORDER__==__ORDER_BIG_ENDIAN__
-    storage_header->length = libspdm_byte_swap_32(storage_header->length);
     storage_header->security_protocol_specific = libspdm_byte_swap_16(
         storage_header->security_protocol_specific);
 #endif
@@ -480,7 +466,7 @@ libspdm_return_t libspdm_transport_storage_encode_message(
 
         /* Message to secured message*/
         sec_trans_header_size = is_request_message ?
-                                sizeof(storage_spdm_transport_header): 0;
+                                sizeof(spdm_storage_transport_virtual_header_t): 0;
         /* DSP0286 Specifies 4 Reserved bytes at the start of a secured message */
         sec_trans_header_size += sizeof(uint32_t);
         secured_message = ((uint8_t *)(*transport_message)) + sec_trans_header_size;
@@ -563,14 +549,14 @@ libspdm_return_t libspdm_transport_storage_encode_management_cmd(
     uint8_t connection_id, size_t *transport_message_size,
     size_t *allocation_length, void *transport_message)
 {
-    storage_spdm_transport_header *storage_header;
+    spdm_storage_transport_virtual_header_t *storage_header;
 
     if (!transport_message_size || !allocation_length
         || *transport_message_size == 0) {
         return LIBSPDM_STATUS_INVALID_MSG_SIZE;
     }
 
-    if (*transport_message_size < sizeof(storage_spdm_transport_header)) {
+    if (*transport_message_size < sizeof(spdm_storage_transport_virtual_header_t)) {
         return LIBSPDM_STATUS_BUFFER_TOO_SMALL;
     }
 
@@ -604,7 +590,7 @@ libspdm_return_t libspdm_transport_storage_encode_management_cmd(
         return LIBSPDM_STATUS_INVALID_MSG_FIELD;
     }
 
-    *transport_message_size = sizeof(storage_spdm_transport_header);
+    *transport_message_size = sizeof(spdm_storage_transport_virtual_header_t);
     libspdm_zero_mem(transport_message, *transport_message_size);
 
     storage_header = transport_message;
@@ -612,11 +598,8 @@ libspdm_return_t libspdm_transport_storage_encode_management_cmd(
     storage_header->security_protocol_specific = transport_operation << 2;
     storage_header->security_protocol_specific |= connection_id &
                                                   SPDM_STORAGE_MAX_CONNECTION_ID_MASK;
-    storage_header->inc_512 = false;
-    storage_header->length = (uint32_t)*transport_message_size;
 
 #if __BYTE_ORDER__==__ORDER_BIG_ENDIAN__
-    storage_header->length = libspdm_byte_swap_32(storage_header->length);
     storage_header->security_protocol_specific = libspdm_byte_swap_16(
         storage_header->security_protocol_specific);
 #endif
@@ -658,10 +641,10 @@ libspdm_return_t libspdm_transport_storage_encode_discovery_response(
     libspdm_zero_mem(transport_message, *transport_message_size);
     discovery_response = transport_message;
 
-    discovery_response->data_length = (uint16_t)*transport_message_size;
-    discovery_response->storage_binding_version = SPDM_STORAGE_SECURITY_BINDING_VERSION;
+    discovery_response->storage_response_headers.data_length = (uint16_t)*transport_message_size;
+    discovery_response->storage_response_headers.storage_binding_version = SPDM_STORAGE_SECURITY_BINDING_VERSION;
     /* 1 supported connection (0's based) */
-    discovery_response->connection_parameters = 0;
+    discovery_response->conn_params = 0;
     discovery_response->supported_operations = (1 << SPDM_STORAGE_OPERATION_CODE_DISCOVERY)
                                                | (1 << SPDM_STORAGE_OPERATION_CODE_PENDING_INFO)
                                                | (1 << SPDM_STORAGE_OPERATION_CODE_MESSAGE)
@@ -706,8 +689,8 @@ libspdm_return_t libspdm_transport_storage_encode_pending_info_response(
     libspdm_zero_mem(transport_message, *transport_message_size);
     pending_info_response = transport_message;
 
-    pending_info_response->data_length = (uint16_t)*transport_message_size;
-    pending_info_response->storage_binding_version = SPDM_STORAGE_SECURITY_BINDING_VERSION;
+    pending_info_response->storage_response_headers.data_length = (uint16_t)*transport_message_size;
+    pending_info_response->storage_response_headers.storage_binding_version = SPDM_STORAGE_SECURITY_BINDING_VERSION;
 
     if (response_pending) {
         pending_info_response->pending_info_flag = (1 << 0);
@@ -723,9 +706,6 @@ libspdm_return_t libspdm_transport_storage_encode_pending_info_response(
  * @param  transport_message_size  Size in bytes of the transport message data buffer.
  * @param  transport_message       A pointer to an encoded transport message buffer.
  * @param  transport_command       Storage transport command contained in transport message
- * @param  length                  On return, this specifies allocation length
- *                                 or transfer length. Depending on if the
- *                                 message was an IF_RECV or IF_SEND respectively.
  *
  * @retval RETURN_SUCCESS                      The message is decoded successfully.
  * @retval LIBSPDM_STATUS_INVALID_MSG_SIZE     The message is NULL or the message_size is zero.
@@ -735,10 +715,9 @@ libspdm_return_t libspdm_transport_storage_encode_pending_info_response(
 libspdm_return_t libspdm_transport_storage_decode_management_cmd(
     size_t transport_message_size,
     const void *transport_message,
-    uint8_t *transport_command,
-    uint32_t *length)
+    uint8_t *transport_command)
 {
-    const storage_spdm_transport_header *storage_header;
+    const spdm_storage_transport_virtual_header_t *storage_header;
     uint16_t security_protocol_specific;
     uint8_t spsp0, spsp1, spdm_operation;
 
@@ -746,9 +725,9 @@ libspdm_return_t libspdm_transport_storage_decode_management_cmd(
         return LIBSPDM_STATUS_INVALID_MSG_SIZE;
     }
 
-    LIBSPDM_ASSERT(transport_message_size >= sizeof(storage_spdm_transport_header));
+    LIBSPDM_ASSERT(transport_message_size >= sizeof(spdm_storage_transport_virtual_header_t));
 
-    if (transport_message_size < sizeof(storage_spdm_transport_header)) {
+    if (transport_message_size < sizeof(spdm_storage_transport_virtual_header_t)) {
         return LIBSPDM_STATUS_INVALID_MSG_SIZE;
     }
 
@@ -783,10 +762,5 @@ libspdm_return_t libspdm_transport_storage_decode_management_cmd(
         return LIBSPDM_STATUS_UNSUPPORTED_CAP;
     }
 
-#if __BYTE_ORDER__==__ORDER_BIG_ENDIAN__
-    *length  = libspdm_byte_swap_32(storage_header->length);
-#else
-    *length  = storage_header->length;
-#endif
     return LIBSPDM_STATUS_SUCCESS;
 }

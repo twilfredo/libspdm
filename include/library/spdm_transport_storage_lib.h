@@ -10,41 +10,36 @@
 #include "library/spdm_common_lib.h"
 #include "library/spdm_crypt_lib.h"
 
-#define LIBSPDM_STORAGE_SEQUENCE_NUMBER_COUNT 0
-#define LIBSPDM_STORAGE_MAX_RANDOM_NUMBER_COUNT 0
+#define LIBSPDM_STORAGE_MAX_RANDOM_NUMBER_COUNT 32
 
 /*
- * SPDM Storage transport binding header for request encoding as defined by
- * DSP0286. This header is not specific to any particular storage type, i.e
+ * SPDM Storage transport binding header for request encoding.
+ * This virtual header is not specific to any particular storage type, i.e
  * SCSI, NVMe or ATA. Instead, it is used to encode requests (host to controller),
- * to provide transport specific SPDM information. This information shall then
- * be used to generate the storage protocol specific command. Refer to the
- * storage specification for field sizes, offsets and application.
+ * to communicate SPDM storage transport information. This information shall then
+ * be used to generate the storage protocol specific commands.
+ * Refer to the storage specification (NVMe/SCSI/ATA) for storage command block
+ * descriptions.
  *
- * As such, this header *shall not* be transmitted as a part of the libspdm
- * message, instead be used only as required to generate the storage specific
- * command(s).
+ * This header *shall not* be transmitted as a part of the libspdm
+ * message in the storage command block data buffer, instead, be used ONLY as a
+ * means to generate the storage specific command(s).
  *
- * +-----------------+--------+-------------------+---------+--------+--+
- * |      TYPE       |Security|      Security     | INC_512 | Length |  |
- * |                 |Protocol| Protocol Specific |         |        |  |
- * +-----------------+--------+-------------------+---------+--------+  +
- * |Security Protocol|    1   |         2         |    1    |  4     |  |
- * +-----------------+--------+-------------------+---------+--------+--+
- *
- * This structure is publicly defined to provide transport encoding information
- * to the caller from transport_message buffer(s).
+ * +-----------------+--------+-------------------+
+ * |      TYPE       |Security|      Security     |
+ * |                 |Protocol| Protocol Specific |
+ * +-----------------+--------+-------------------+
+ * |Security Protocol|    1   |         2         |
+ * +-----------------+--------+-------------------+
  */
 #pragma pack(1)
 typedef struct {
     uint8_t security_protocol;
     uint16_t security_protocol_specific;
-    bool inc_512;
-    uint32_t length;
-} storage_spdm_transport_header;
+} spdm_storage_transport_virtual_header_t;
 #pragma pack()
 
-#define LIBSPDM_STORAGE_TRANSPORT_HEADER_SIZE  (1 + 2 + 1 + 4)
+#define LIBSPDM_STORAGE_TRANSPORT_HEADER_SIZE  (1 + 2)
 #define LIBSPDM_STORAGE_TRANSPORT_TAIL_SIZE    (0)
 
 #define LIBSPDM_STORAGE_CMD_DIRECTION_IF_SEND 0x01
@@ -169,9 +164,6 @@ libspdm_return_t libspdm_transport_storage_encode_message(
  * @param  transport_message_size  Size in bytes of the transport message data buffer.
  * @param  transport_message       A pointer to an encoded transport message buffer.
  * @param  transport_command       Storage transport command contained in transport message
- * @param  length                  On return, this specifies allocation length
- *                                 or transfer length. Depending of if the
- *                                 message was an IF_RECV or IF_SEND respectively.
  *
  * @retval RETURN_SUCCESS                      The message is decoded successfully.
  * @retval LIBSPDM_STATUS_INVALID_MSG_SIZE     The message is NULL or the message_size is zero.
@@ -181,8 +173,7 @@ libspdm_return_t libspdm_transport_storage_encode_message(
 libspdm_return_t libspdm_transport_storage_decode_management_cmd(
     size_t transport_message_size,
     const void *transport_message,
-    uint8_t *transport_command,
-    uint32_t *length);
+    uint8_t *transport_command);
 
 /**
  * Encode a storage transport management command, supports only Discovery and

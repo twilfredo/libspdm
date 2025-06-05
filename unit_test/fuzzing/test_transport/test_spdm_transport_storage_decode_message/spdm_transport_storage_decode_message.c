@@ -37,7 +37,7 @@ void libspdm_test_transport_storage_decode_message(void **state)
     libspdm_return_t ret;
 
     if (m_libspdm_transport_storage_test_context.test_buffer_size <
-        sizeof(storage_spdm_transport_header)) {
+        sizeof(spdm_storage_transport_virtual_header_t)) {
         LIBSPDM_ASSERT(false);
     }
 
@@ -47,7 +47,7 @@ void libspdm_test_transport_storage_decode_message(void **state)
     is_app_message = false;
     is_request_message = true;
     message_size = 12;
-    message = (uint8_t *)transport_message + sizeof(storage_spdm_transport_header);
+    message = (uint8_t *)transport_message + sizeof(spdm_storage_transport_virtual_header_t);
 
     ret = libspdm_transport_storage_encode_message(
         state,
@@ -83,13 +83,12 @@ void libspdm_test_transport_storage_decode_management_cmd(void **state)
     void *transport_message;
     size_t transport_message_size;
     size_t alloc_len;
-    uint32_t decoded_alloc_len;
     uint8_t cmd_direction;
     uint8_t transport_operation, transport_command;
     libspdm_return_t ret;
 
     if (m_libspdm_transport_storage_test_context.test_buffer_size <
-        sizeof(storage_spdm_transport_header)) {
+        sizeof(spdm_storage_transport_virtual_header_t)) {
         LIBSPDM_ASSERT(false);
     }
 
@@ -113,12 +112,11 @@ void libspdm_test_transport_storage_decode_management_cmd(void **state)
     ret = libspdm_transport_storage_decode_management_cmd(
         transport_message_size,
         transport_message,
-        &transport_command,
-        &decoded_alloc_len
+        &transport_command
         );
+
     LIBSPDM_ASSERT(ret == LIBSPDM_STATUS_SUCCESS);
     LIBSPDM_ASSERT(transport_command == SPDM_STORAGE_OPERATION_CODE_DISCOVERY);
-    LIBSPDM_ASSERT(decoded_alloc_len == sizeof(storage_spdm_transport_header));
     USE_VAR(ret);
 }
 
