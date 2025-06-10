@@ -73,6 +73,11 @@ typedef enum
  * by one such descriptor.
  */
 #define LISBPDM_STORAGE_SECURED_MESSAGE_DESCRIPTOR_MIN_SIZE (1 + 3 + (16 * 1))
+/*
+ * Within an SPDM Storage Secured Message, this is the offset in the `Num Descriptors`
+ * field.
+ */
+#define LIBSPDM_STORAGE_SECURED_MESSAGE_NUM_DESCRIPTORS_OFFSET (4 + 4 + 2 + 2 + 2 + 2)
 
 /**
  * Decode an Security Protocol Command message to a normal message or secured message.

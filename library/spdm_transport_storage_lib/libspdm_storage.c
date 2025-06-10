@@ -61,23 +61,70 @@ uint8_t libspdm_storage_get_sequence_number(uint64_t sequence_number,
 
 void print_buffer_hex(const char *label, const void *buffer, size_t size) {
     const uint8_t *bytes = (const uint8_t *)buffer;
+
+    if (size > 1024) {
+        size = 1024;
+        LIBSPDM_DEBUG((LIBSPDM_DEBUG_ERROR, "\n WARN ADJUSTED SIZE\n"));
+    }
+
     LIBSPDM_DEBUG((LIBSPDM_DEBUG_ERROR, "\n %s (%zu bytes):\n", label, size));
+
     for (size_t i = 0; i < size; i++) {
          LIBSPDM_DEBUG((LIBSPDM_DEBUG_ERROR,"%02x ", bytes[i]));
         if ((i + 1) % 32 == 0)
             LIBSPDM_DEBUG((LIBSPDM_DEBUG_ERROR,"\n"));
     }
+
     if (size % 32 != 0)
         LIBSPDM_DEBUG((LIBSPDM_DEBUG_ERROR,"\n"));
 }
 
 libspdm_return_t libspdm_strorage_secured_message_decode(
-    size_t *message_size, void **message,
-    size_t transport_message_size, void *transport_message)
+    size_t *message_size, void **message)
 {
-	print_buffer_hex("trans_raw", transport_message, transport_message_size);
-	print_buffer_hex("message_decoded", *message, *message_size);
+	uint8_t *desc_start = *message;
+	uint32_t spdm_msg_offset;
+	spdm_storage_secured_message_descriptor *descriptor;
+	uint8_t num_descriptors;
 
+	num_descriptors = desc_start[0];
+	/* Currently support handling only a single SPDM descriptor */
+	if (num_descriptors > 1)
+		return LIBSPDM_STATUS_UNSUPPORTED_CAP;
+
+	for (int i = 0; i < num_descriptors; ++i) {
+		/* 3 reserved bytes before descriptors begin */
+		descriptor = (void *)(desc_start + (sizeof(uint8_t) * 3));
+		switch(descriptor->desc_type) {
+		case SECURED_MSG_DESCRIPTOR_NVME:
+		case SECURED_MSG_DESCRIPTOR_SCSI:
+		case SECURED_MSG_DESCRIPTOR_ATA:
+			return LIBSPDM_STATUS_UNSUPPORTED_CAP;
+		case SECURED_MSG_DESCRIPTOR_SPDM:
+			if (descriptor->length > *message_size)
+				return LIBSPDM_STATUS_INVALID_MSG_SIZE;
+
+			/*
+			 * Offset is calculated from the start of the Secured
+			 * Message Data Buffer. `message` points to the start
+			 * of `num descriptors` within the decoded Secured Message.
+			 */
+			if (LIBSPDM_STORAGE_SECURED_MESSAGE_NUM_DESCRIPTORS_OFFSET > descriptor->offset)
+				return LIBSPDM_STATUS_INVALID_MSG_FIELD;
+
+			spdm_msg_offset = descriptor->offset - LIBSPDM_STORAGE_SECURED_MESSAGE_NUM_DESCRIPTORS_OFFSET;
+			if (spdm_msg_offset > *message_size)
+				return LIBSPDM_STATUS_INVALID_MSG_SIZE;
+
+			break;
+		case SECURED_MSG_DESCRIPTOR_DATA_BUFFER:
+			return LIBSPDM_STATUS_UNSUPPORTED_CAP;
+		}
+	}
+
+	*message = *message + spdm_msg_offset;
+	*message_size -= spdm_msg_offset;
+	print_buffer_hex("message_decoded", *message, *message_size);
 	return LIBSPDM_STATUS_SUCCESS;
 }
 
@@ -92,11 +139,11 @@ libspdm_return_t libspdm_strorage_secured_message_encode(
 	uint8_t* secured_storage_desc_start;
 	uint8_t* secured_storage_desc_end;
 	spdm_storage_secured_message_descriptor *descriptor;
-	LIBSPDM_DEBUG((LIBSPDM_DEBUG_ERROR,
-		"wilf: libspdm_strorage_secured_message_encode\n"));
+
 	/* DSP0286 Specifies 4 Reserved bytes at the start of a secured message */
         sec_trans_header_size += sizeof(uint8_t) * 4;
 
+        libspdm_zero_mem(*transport_message, *transport_message_size);
         *secured_message = ((uint8_t *)(*transport_message)) + sec_trans_header_size;
         *secured_message_size = *transport_message_size - sec_trans_header_size;
 
@@ -106,8 +153,8 @@ libspdm_return_t libspdm_strorage_secured_message_encode(
 		return LIBSPDM_STATUS_INVALID_MSG_SIZE;
 	}
 
-	secured_storage_desc_start = *secured_message;
-	secured_storage_desc_end = (*secured_message) + LISBPDM_STORAGE_SECURED_MESSAGE_DESCRIPTOR_MIN_SIZE;
+	secured_storage_desc_start = *secured_message + (4 + 2 + 2 + 2 + 2);
+	secured_storage_desc_end = secured_storage_desc_start + LISBPDM_STORAGE_SECURED_MESSAGE_DESCRIPTOR_MIN_SIZE;
 
 	/*
 	 * Move the secured message within the trasnport message to allow space for
@@ -117,7 +164,16 @@ libspdm_return_t libspdm_strorage_secured_message_encode(
 	    *message, *message_size);
 	libspdm_zero_mem(secured_storage_desc_start, LISBPDM_STORAGE_SECURED_MESSAGE_DESCRIPTOR_MIN_SIZE);
 
-	print_buffer_hex("message_spliced", *message, *message_size);
+	/* Encode Secured Message Storage Descriptor */
+	/* Num Descriptors */
+	secured_storage_desc_start[0] = 1;
+	/* 3 reserved bytes before descriptors begin */
+	descriptor = (void *)(secured_storage_desc_start + (sizeof(uint8_t) * 3));
+	descriptor->desc_type = SECURED_MSG_DESCRIPTOR_SPDM;
+	descriptor->status = 0;
+	/* Length of the element this SPDM element  */
+	descriptor->length = *message_size ;
+
 	/*
 	 * The updated `message` means subsequent calls to libspdm_encode_secured_message
 	 * also encode the `descriptors` as part of the data buffer as specified
@@ -126,21 +182,12 @@ libspdm_return_t libspdm_strorage_secured_message_encode(
 	*message = secured_storage_desc_start;
 	*message_size += LISBPDM_STORAGE_SECURED_MESSAGE_DESCRIPTOR_MIN_SIZE;
 
-	/* Encode Secured Message Storage Descriptor */
-	/* Num Descriptors */
-	secured_storage_desc_start[0] = 1;
-	/* 3 reserved bytes before descriptors begin */
-	descriptor = (void *)(secured_storage_desc_start + (sizeof(uint8_t) * 3));
-	descriptor->desc_type = SECURED_MSG_DESCRIPTOR_SPDM;
-	descriptor->status = 0;
-	descriptor->length = *message_size;
 	/*
 	 * Only a single descriptor is used, the offset into the secure message data
 	 * element is calculated as per Table 7 of DSP0286
 	 */
 	descriptor->offset = (4 + 4 + 2 + 2 + 2 + 2 + LISBPDM_STORAGE_SECURED_MESSAGE_DESCRIPTOR_MIN_SIZE);
 
-	print_buffer_hex("final_msg_with_desc", *message, *message_size);
 	return LIBSPDM_STATUS_SUCCESS;
 }
 
@@ -168,6 +215,7 @@ libspdm_return_t libspdm_storage_decode_message(uint32_t **session_id,
                                                 void **message)
 {
     const spdm_storage_transport_virtual_header_t *storage_header;
+    size_t secure_msg_reserved_bytes = sizeof(uint8_t) * 4;
     uint16_t security_protocol_specific;
     uint8_t spsp0, spsp1, spdm_operation;
 
@@ -209,6 +257,8 @@ libspdm_return_t libspdm_storage_decode_message(uint32_t **session_id,
         if (session_id != NULL) {
             *session_id = NULL;
         }
+        *message_size = transport_message_size - sizeof(spdm_storage_transport_virtual_header_t);
+        *message = (uint8_t *)transport_message + sizeof(spdm_storage_transport_virtual_header_t);
         break;
     case SPDM_STORAGE_OPERATION_CODE_SECURED_MESSAGE:
         LIBSPDM_ASSERT(session_id != NULL);
@@ -220,14 +270,16 @@ libspdm_return_t libspdm_storage_decode_message(uint32_t **session_id,
             return LIBSPDM_STATUS_INVALID_MSG_SIZE;
         }
         *session_id = (void *)((uint8_t *)transport_message +
-                               sizeof(spdm_storage_transport_virtual_header_t));
+                               sizeof(spdm_storage_transport_virtual_header_t)) +
+                               secure_msg_reserved_bytes;
+        *message_size = transport_message_size - sizeof(spdm_storage_transport_virtual_header_t) -
+            secure_msg_reserved_bytes;
+        *message = (uint8_t *)transport_message + sizeof(spdm_storage_transport_virtual_header_t) +
+            secure_msg_reserved_bytes;
         break;
     default:
         return LIBSPDM_STATUS_UNSUPPORTED_CAP;
     }
-
-    *message_size = transport_message_size - sizeof(spdm_storage_transport_virtual_header_t);
-    *message = (uint8_t *)transport_message + sizeof(spdm_storage_transport_virtual_header_t);
 
     return LIBSPDM_STATUS_SUCCESS;
 }
@@ -327,13 +379,14 @@ libspdm_return_t libspdm_transport_storage_decode_message(
              * DSP0286 specifies 4 reserved bytes at the start of a secured
              * message. Skip that for decoding.
              */
+            print_buffer_hex("undecode_resp_sec_msg", ((uint8_t *)transport_message), transport_message_size);
             status = libspdm_decode_secured_message(
                 secured_message_context, **session_id,
                 is_request_message, transport_message_size - secure_msg_reserved_bytes,
                 ((uint8_t *)transport_message) + secure_msg_reserved_bytes,
                 message_size, message, &spdm_secured_message_callbacks);
 
-
+            print_buffer_hex("decode_resp_sec_msg", *message, *message_size);
             if (LIBSPDM_STATUS_IS_ERROR(status)) {
                 LIBSPDM_DEBUG((LIBSPDM_DEBUG_ERROR,
                                "libspdm_decode_secured_message - %xu\n", status));
@@ -344,9 +397,7 @@ libspdm_return_t libspdm_transport_storage_decode_message(
                 return status;
             }
 
-            status = libspdm_strorage_secured_message_decode(
-                message_size, message, transport_message_size,
-                transport_message);
+            status = libspdm_strorage_secured_message_decode(message_size, message);
             if (LIBSPDM_STATUS_IS_ERROR(status)) {
                 LIBSPDM_DEBUG((LIBSPDM_DEBUG_ERROR,
                                "libspdm_strorage_secured_message_decode - %xu\n", status));
@@ -387,9 +438,9 @@ libspdm_return_t libspdm_transport_storage_decode_message(
             /* Secured message to message*/
             status = libspdm_decode_secured_message(
                 secured_message_context, *secured_message_session_id,
-                is_request_message, secured_message_size, secured_message,
-                message_size, message,
-                &spdm_secured_message_callbacks);
+                is_request_message, secured_message_size,
+                (uint8_t *)secured_message,
+                message_size, message, &spdm_secured_message_callbacks);
             if (LIBSPDM_STATUS_IS_ERROR(status)) {
                 LIBSPDM_DEBUG((LIBSPDM_DEBUG_ERROR,
                                "libspdm_decode_secured_message - %xu\n", status));
@@ -400,11 +451,10 @@ libspdm_return_t libspdm_transport_storage_decode_message(
                 return status;
             }
 
-            LIBSPDM_DEBUG((LIBSPDM_DEBUG_ERROR,
-                           "wilf: here xxx\n"));
-            status = libspdm_strorage_secured_message_decode(
-                message_size, message, transport_message_size,
-                transport_message);
+            print_buffer_hex("decode_req_sec_msg_sec", secured_message, secured_message_size);
+            print_buffer_hex("decode_req_sec_message", *message, *message_size);
+
+            status = libspdm_strorage_secured_message_decode(message_size, message);
             if (LIBSPDM_STATUS_IS_ERROR(status)) {
                 LIBSPDM_DEBUG((LIBSPDM_DEBUG_ERROR,
                                "libspdm_strorage_secured_message_decode - %xu\n", status));
@@ -580,7 +630,7 @@ libspdm_return_t libspdm_transport_storage_encode_message(
                            "libspdm_strorage_secured_message_enconde_descriptors - %xu\n", status));
             return status;
         }
-        print_buffer_hex("trasnport_buffer_final1", *transport_message, *transport_message_size);
+        print_buffer_hex("secured_msg_spliced", message, message_size);
         status = libspdm_encode_secured_message(
             secured_message_context, *session_id, is_request_message,
             message_size, message, &secured_message_size,
@@ -591,6 +641,7 @@ libspdm_return_t libspdm_transport_storage_encode_message(
             return status;
         }
         print_buffer_hex("secured_msg_encrptd", secured_message, secured_message_size);
+
         if (!is_request_message) {
             /*
              * Storage response messages are not transport encoded, instead it
